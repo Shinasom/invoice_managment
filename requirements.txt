@@ -8,3 +8,8 @@ numpy
 pillow
 nltk
 re
+pdf2image
+streamlit
+google-generativeai
+
+

@@ -11,5 +11,6 @@ re
 pdf2image
 streamlit
 google-generativeai
+fpdf
 
 

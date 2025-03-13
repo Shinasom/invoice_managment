@@ -9,6 +9,9 @@ import pytesseract
 import google.generativeai as genai
 import json
 import re
+import shutil
+from fpdf import FPDF
+
 
 
 # Configure Gemini API Key
@@ -18,8 +21,8 @@ genai.configure(api_key="AIzaSyDUqJdPpP8E51hfJ-UhxDKqiJVgJau2j0E")
 
 
 
-# Directory to save invoice images
 SAVE_DIR = "saved_bills"
+DB_NAME = "invoices.db"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 # Required database columns
@@ -137,6 +140,105 @@ def process_pdf(uploaded_file):
     extracted_text = extract_text(images[0])
     return extracted_text, images[0]
 
+def calculate_total_amount():
+    """Calculate the sum of total_amount column from invoices.db."""
+    conn = sqlite3.connect("invoices.db")
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT SUM(total_amount) FROM invoices")
+    total = cursor.fetchone()[0]  # Fetch the sum (None if no records)
+    
+    conn.close()
+    
+    return total if total is not None else 0.0
+
+
+def clear_database():
+    """Delete all rows from the invoices table without dropping the table."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM invoices")  # Clears all rows but keeps table
+    conn.commit()
+    conn.close()
+
+def clear_saved_images():
+    """Delete all images inside the saved_bills directory."""
+    if os.path.exists(SAVE_DIR):
+        shutil.rmtree(SAVE_DIR)  # Deletes the folder and all contents
+        os.makedirs(SAVE_DIR, exist_ok=True)  # Recreate the folder
+
+
+
+
+def generate_invoice_pdf():
+    """Generate a PDF with an invoice summary table on the first page and invoice images on subsequent pages."""
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("Arial", style='B', size=14)
+    
+    # Title
+    pdf.cell(200, 10, "Invoice Summary", ln=True, align="C")
+    pdf.ln(10)
+
+    # Connect to database and fetch invoice data
+    conn = sqlite3.connect("invoices.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, store_name, date, total_amount FROM invoices")
+    invoices = cursor.fetchall()
+
+    # Calculate total amount
+    total_sum = sum(row[3] for row in invoices)
+
+    # Table Headers
+    pdf.set_font("Arial", style='B', size=10)
+    col_widths = [20, 60, 40, 30]
+    headers = ["Bill ID", "Store Name", "Date", "Total Amount"]
+
+    for i, header in enumerate(headers):
+        pdf.cell(col_widths[i], 8, header, border=1, align="C")
+    pdf.ln()
+
+    # Table Data
+    pdf.set_font("Arial", size=10)
+    for row in invoices:
+        pdf.cell(col_widths[0], 8, str(row[0]), border=1, align="C")
+        pdf.cell(col_widths[1], 8, row[1], border=1)
+        pdf.cell(col_widths[2], 8, row[2], border=1, align="C")
+        pdf.cell(col_widths[3], 8, f"{row[3]:.2f}", border=1, align="C")
+        pdf.ln()
+
+    # Total sum row
+    pdf.set_font("Arial", style='B', size=10)
+    pdf.cell(sum(col_widths[:3]), 8, "Total Amount", border=1, align="R")
+    pdf.cell(col_widths[3], 8, f"{total_sum:.2f}", border=1, align="C")
+    pdf.ln(10)
+
+    conn.close()
+
+    # Add invoice images on new pages
+    image_folder = "saved_bills"
+    images = [f for f in os.listdir(image_folder) if f.endswith((".png", ".jpg", ".jpeg"))]
+
+    if not images:
+        st.warning("No invoice images found to generate PDF.")
+        return
+
+    for img in images:
+        img_path = os.path.join(image_folder, img)
+        pdf.add_page()
+        pdf.image(img_path, x=10, y=10, w=180)
+
+    # Save and offer PDF for download
+    pdf_output_path = "invoices_summary.pdf"
+    pdf.output(pdf_output_path)
+    st.success("✅ Invoice Summary PDF generated successfully!")
+
+    with open(pdf_output_path, "rb") as pdf_file:
+        st.download_button(label="📄 Download Invoice Summary PDF", data=pdf_file, file_name="invoices_summary.pdf", mime="application/pdf")
+
+
+
 # Streamlit UI
 st.title("Invoice OCR Scanner")
 
@@ -175,3 +277,16 @@ if uploaded_file:
     else:
         saved_id = save_to_database(invoice_data, image)
         st.success(f"✅ Invoice saved with ID: {saved_id}.")
+
+if st.button("Sum of All Invoices"):
+    total_sum = calculate_total_amount()
+    st.success(f"💰 Total sum of all invoices: ₹{total_sum:.2f}")
+
+if st.button("Clear All Data (Invoices & Images)"):
+    clear_database()
+    clear_saved_images()
+    st.success("All invoices and saved images have been deleted.")
+    st.rerun()
+
+if st.button("Generate Invoice Summary PDF"):
+    generate_invoice_pdf()

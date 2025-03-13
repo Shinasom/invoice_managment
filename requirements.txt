@@ -1,0 +1,10 @@
+pytesseract
+argparse
+opencv-python
+pandas
+seaborn
+matplotlib
+numpy
+pillow
+nltk
+re

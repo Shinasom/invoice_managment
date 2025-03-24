@@ -1,0 +1,17 @@
+streamlit
+Pillow
+pdf2image
+fuzzywuzzy
+python-Levenshtein
+pytesseract
+google-generativeai
+google-cloud-vision
+google-auth
+google-auth-oauthlib
+fpdf
+numpy
+requests
+pandas
+matplotlib
+seaborn
+streamlit-aggrid
